@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Кибер-Ассистент // Teacher.OS</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --bg-base: #030305;
+            --neon-cyan: #00f3ff;
+            --neon-magenta: #ff00ff;
+            --neon-blue: #0033ff;
+            --neon-green: #39ff14;
+            --glass-bg: rgba(10, 12, 20, 0.7);
+            --font-mono: 'Courier New', Courier, monospace;
+            --font-sans: 'Segoe UI', Roboto, Helvetica, sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg-base);
+            color: #fff;
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            padding: 15px;
+            background-image: 
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        h1 {
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 1.4rem;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 8px var(--neon-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 243, 255, 0.02);
+        }
+
+        .panel-title {
+            font-size: 0.85rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            font-family: var(--font-mono);
+        }
+
+        /* API Key Manager */
+        .api-manager { display: flex; gap: 10px; align-items: center; }
+        .api-input-wrapper { flex-grow: 1; position: relative; }
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid var(--neon-magenta);
+            color: var(--neon-magenta);
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            outline: none;
+            transition: all 0.3s;
+        }
+        input[type="password"]:focus { box-shadow: 0 0 10px rgba(255, 0, 255, 0.3); }
+        .btn-small {
+            padding: 12px 15px;
+            background: transparent;
+            border: 1px solid var(--neon-magenta);
+            color: var(--neon-magenta);
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .btn-small:hover { background: var(--neon-magenta); color: #000; box-shadow: 0 0 10px var(--neon-magenta); }
+        .hidden { display: none !important; }
+
+        /* Custom Radio Buttons (Models & Subjects) */
+        .grid-selector { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+        .grid-selector.models { grid-template-columns: 1fr 1fr 1fr; }
+        
+        .radio-label {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.85rem;
+        }
+        .radio-label input[type="radio"] { display: none; }
+        .radio-circle {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #555;
+            border-radius: 50%;
+            margin-right: 10px;
+            position: relative;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+        .radio-label input[type="radio"]:checked + .radio-circle {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 8px var(--neon-cyan);
+        }
+        .radio-label input[type="radio"]:checked + .radio-circle::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px; height: 8px;
+            background: var(--neon-cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 5px var(--neon-cyan);
+        }
+        .radio-label input[type="radio"]:checked ~ .radio-text {
+            color: var(--neon-cyan);
+            text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
+        }
+
+        /* Action Buttons */
+        .btn-main {
+            width: 100%;
+            padding: 16px;
+            background: rgba(0, 243, 255, 0.05);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            margin-top: 5px;
+        }
+        .btn-main:hover, .btn-main:active {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 15px var(--neon-cyan);
+        }
+        .btn-upload { border-color: var(--neon-magenta); color: var(--neon-magenta); }
+        .btn-upload:hover, .btn-upload:active { background: var(--neon-magenta); box-shadow: 0 0 15px var(--neon-magenta); }
+
+        /* Terminal */
+        .terminal {
+            background: #000;
+            border: 1px solid #333;
+            color: var(--neon-green);
+            padding: 15px;
+            border-radius: 8px;
+            min-height: 150px;
+            max-height: 350px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+        .terminal-glow { border-color: var(--neon-green); box-shadow: 0 0 10px rgba(57, 255, 20, 0.2); }
+        .sys-msg { color: #888; margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+
+        /* Mobile Adjustments */
+        @media (max-width: 400px) {
+            .grid-selector { grid-template-columns: 1fr 1fr; }
+            .grid-selector.models { grid-template-columns: 1fr; }
+            .radio-label { font-size: 0.8rem; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Teacher.OS // Ассистент</h1>
+
+        <div class="panel">
+            <div class="panel-title">Системный Доступ (API)</div>
+            <div class="api-manager" id="apiSetup">
+                <div class="api-input-wrapper">
+                    <input type="password" id="apiKeyInput" placeholder="Введите API ключ...">
+                </div>
+                <button class="btn-small" id="saveKeyBtn">Сохранить</button>
+            </div>
+            <div class="api-manager hidden" id="apiActive">
+                <div class="api-input-wrapper">
+                    <input type="password" value="********************" disabled style="border-color: #333; color: #888;">
+                </div>
+                <button class="btn-small" id="changeKeyBtn">Изменить</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Нейросетевое Ядро</div>
+            <div class="grid-selector models">
+                <label class="radio-label">
+                    <input type="radio" name="model" value="openai:gpt-4o" checked>
+                    <div class="radio-circle"></div>
+                    <span class="radio-text">GPT-4o</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="model" value="anthropic:claude-3-5-sonnet-20240620">
+                    <div class="radio-circle"></div>
+                    <span class="radio-text">Claude 3.5</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="model" value="google:gemini-1.5-pro">
+                    <div class="radio-circle"></div>
+                    <span class="radio-text">Gemini 1.5</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Предметная Область</div>
+            <div class="grid-selector" id="subjectGrid">
+                </div>
+        </div>
+
+        <div class="panel">
+            <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            <button class="btn-main btn-upload" id="uploadBtn">1. Загрузить работу</button>
+            <button class="btn-main" id="processBtn">2. Начать Анализ</button>
+        </div>
+
+        <div class="terminal" id="terminalOutput">
+            <div class="sys-msg">TERMINAL.LOG // Ожидание ввода...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Конфигурация ---
+        const WORKER_URL = "https://young-cloud-d08d.sashaww145.workers.dev"; // ВСТАВЬТЕ ВАШ URL WORKER'A СЮДА
+        
+        const subjects = [
+            "Математика", "Русский язык", "Литература", "Английский язык", 
+            "Физика", "Химия", "Биология", "География", 
+            "История", "Обществознание", "Информатика", "ОБЖ"
+        ];
+
+        // --- DOM Элементы ---
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const saveKeyBtn = document.getElementById('saveKeyBtn');
+        const changeKeyBtn = document.getElementById('changeKeyBtn');
+        const apiSetup = document.getElementById('apiSetup');
+        const apiActive = document.getElementById('apiActive');
+        const subjectGrid = document.getElementById('subjectGrid');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('imageUpload');
+        const processBtn = document.getElementById('processBtn');
+        const terminal = document.getElementById('terminalOutput');
+
+        let currentFile = null;
+        let base64ImageRaw = null; // Без префикса data:image/...
+
+        // --- Инициализация интерфейса ---
+        function initUI() {
+            // Генерация предметов
+            subjects.forEach((sub, index) => {
+                const label = document.createElement('label');
+                label.className = 'radio-label';
+                label.innerHTML = `
+                    <input type="radio" name="subject" value="${sub}" ${index === 0 ? 'checked' : ''}>
+                    <div class="radio-circle"></div>
+                    <span class="radio-text">${sub}</span>
+                `;
+                subjectGrid.appendChild(label);
+            });
+
+            // Проверка сохраненного ключа
+            const savedKey = localStorage.getItem('cyber_api_key');
+            if (savedKey) {
+                apiKeyInput.value = savedKey;
+                toggleApiKeyUI(true);
+            }
+        }
+
+        function toggleApiKeyUI(hasKey) {
+            if (hasKey) {
+                apiSetup.classList.add('hidden');
+                apiActive.classList.remove('hidden');
+            } else {
+                apiSetup.classList.remove('hidden');
+                apiActive.classList.add('hidden');
+                apiKeyInput.value = '';
+            }
+        }
+
+        saveKeyBtn.onclick = () => {
+            const val = apiKeyInput.value.trim();
+            if (val) {
+                localStorage.setItem('cyber_api_key', val);
+                toggleApiKeyUI(true);
+                logToTerminal("Система: API ключ успешно интегрирован в ядро.");
+            }
+        };
+
+        changeKeyBtn.onclick = () => {
+            localStorage.removeItem('cyber_api_key');
+            toggleApiKeyUI(false);
+            logToTerminal("Система: API ключ удален. Требуется новая авторизация.");
+        };
+
+        // --- Обработка файлов ---
+        uploadBtn.onclick = () => fileInput.click();
+
+        fileInput.onchange = (e) => {
+            currentFile = e.target.files[0];
+            if (currentFile) {
+                logToTerminal(`Система: Файл загружен -> ${currentFile.name}`);
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    // Сохраняем чистый base64 для API
+                    base64ImageRaw = event.target.result.split(',')[1]; 
+                };
+                reader.readAsDataURL(currentFile);
+            }
+        };
+
+        // --- Основная логика ---
+        processBtn.onclick = async () => {
+            const apiKey = localStorage.getItem('cyber_api_key');
+            if (!apiKey) {
+                logToTerminal("ОШИБКА: Отсутствует API ключ.");
+                return;
+            }
+            if (!currentFile || !base64ImageRaw) {
+                logToTerminal("ОШИБКА: Визуальные данные не загружены.");
+                return;
+            }
+
+            const subject = document.querySelector('input[name="subject"]:checked').value;
+            const modelData = document.querySelector('input[name="model"]:checked').value.split(':');
+            const provider = modelData[0];
+            const model = modelData[1];
+
+            terminal.classList.add('terminal-glow');
+            logToTerminal(`\n[INIT] Запуск протокола анализа: ${subject}`);
+            logToTerminal(`[OCR] Запуск локального модуля Tesseract.js...`);
+
+            try {
+                // 1. OCR
+                const { data: { text, confidence } } = await Tesseract.recognize(currentFile, 'rus+eng');
+                logToTerminal(`[OCR] Завершено. Уверенность: ${confidence.toFixed(2)}%`);
+
+                const systemPrompt = `Ты — экспертный преподаватель по предмету "${subject}". Твоя задача — строго и справедливо проверить работу ученика. Найди ошибки, объясни их и поставь объективную оценку. Отвечай на русском языке. Форматируй текст так, чтобы его было удобно читать в терминале.`;
+
+                let payload = { provider, model, apiKey, systemPrompt };
+
+                // 2. Логика Fallback
+                if (confidence < 50 || text.trim().length < 10) {
+                    logToTerminal(`[WARN] Распознавание текста не удалось. Перенаправление raw-изображения на Vision API (${model})...`);
+                    payload.image = base64ImageRaw;
+                } else {
+                    logToTerminal(`[INFO] Текст успешно извлечен. Отправка текстовых данных (${model})...`);
+                    payload.text = `Работа студента:\n\n${text}`;
+                }
+
+                // 3. Отправка на Worker
+                logToTerminal(`[NET] Маршрутизация пакета через Cloudflare Worker...`);
+                
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Worker Exception: ${response.status} - ${errText}`);
+                }
+
+                const data = await response.json();
+                
+                logToTerminal(`\n=== РЕЗУЛЬТАТЫ АНАЛИЗА ===\n`);
+                logToTerminal(data.result);
+
+            } catch (error) {
+                logToTerminal(`[CRITICAL ERROR] ${error.message}`);
+            } finally {
+                terminal.classList.remove('terminal-glow');
+            }
+        };
+
+        function logToTerminal(msg) {
+            const time = new Date().toLocaleTimeString('ru-RU');
+            terminal.innerHTML += `[${time}] ${msg}\n`;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        initUI();
+    </script>
+</body>
+</html>
