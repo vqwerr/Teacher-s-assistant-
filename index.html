@@ -256,8 +256,6 @@
     </div>
 
     <script>
-        // --- Конфигурация ---
-        const WORKER_URL = 'https://corsproxy.io/?' + encodeURIComponent('https://young-cloud-d08d.sashaww145.workers.dev');
         
         const subjects = [
             "Математика", "Русский язык", "Литература", "Английский язык", 
@@ -381,39 +379,60 @@
             logToTerminal(`[OCR-WARN] Локальный модуль не ответил. Переход к Vision-анализу...`);
         }
 
-        try {
+                try {
             const systemPrompt = `Ты — экспертный преподаватель по предмету "${subject}". Твоя задача — строго и справедливо проверить работу ученика. Найди ошибки, объясни их и поставь объективную оценку. Отвечай на русском языке.`;
 
-            let payload = { provider, model, apiKey, systemPrompt };
-
-            // Если OCR не сработал или результат плохой — шлем саму картинку
-            if (!ocrSuccess || ocrConfidence < 50 || ocrText.trim().length < 10) {
-                logToTerminal(`[INFO] Отправка изображения на Vision API (${model})...`);
-                payload.image = base64ImageRaw;
-            } else {
-                logToTerminal(`[INFO] Отправка распознанного текста (${model})...`);
-                payload.text = `Работа студента:\n\n${ocrText}`;
+            // Проверка: этот метод обхода мы настроили специально для Google Gemini
+            if (provider !== 'google') {
+                throw new Error("Обход блокировки сейчас настроен только для Gemini. Выберите Gemini 1.5 в настройках.");
             }
 
-            logToTerminal(`[NET] Маршрутизация пакета через Cloudflare Worker...`);
+            // Формируем пакет данных строго в формате Google Gemini
+            const geminiPayload = {
+                contents: [{
+                    parts: [
+                        { text: systemPrompt }
+                    ]
+                }]
+            };
+
+            // Добавляем текст от OCR или саму картинку
+            if (!ocrSuccess || ocrConfidence < 50 || ocrText.trim().length < 10) {
+                logToTerminal(`[INFO] Отправка изображения через прокси-шлюз...`);
+                geminiPayload.contents[0].parts.push({
+                    inline_data: { mime_type: "image/jpeg", data: base64ImageRaw }
+                });
+            } else {
+                logToTerminal(`[INFO] Отправка распознанного текста через прокси-шлюз...`);
+                geminiPayload.contents[0].parts[0].text += `\n\nРаспознанный текст работы:\n${ocrText}`;
+            }
+
+            logToTerminal(`[NET] Прямое подключение к API через AllOrigins...`);
             
-            const response = await fetch(WORKER_URL, {
+                        // Бьем напрямую в Google API (Сработает благодаря Частному DNS)
+            const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+            const response = await fetch(targetUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(geminiPayload)
             });
 
             if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`Worker Error: ${response.status} - ${errText}`);
+                throw new Error(`Ошибка сети: ${response.status}`);
             }
 
+            // Получаем чистый ответ от Google (без оберток)
             const data = await response.json();
             
-            if (data.error) throw new Error(data.error);
+            if (data.error) throw new Error(data.error.message || "Ошибка на стороне Google API");
+
+            const result = data.candidates?.[0]?.content?.parts?.[0]?.text || "Нейросеть вернула пустой ответ.";
 
             logToTerminal(`\n=== РЕЗУЛЬТАТЫ АНАЛИЗА ===\n`);
-            logToTerminal(data.result);
+            logToTerminal(result);
 
         } catch (error) {
             logToTerminal(`[CRITICAL ERROR] ${error.message}`);
@@ -431,4 +450,4 @@
         initUI();
     </script>
 </body>
-    </html>
+</html>
