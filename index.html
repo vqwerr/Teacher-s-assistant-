@@ -346,68 +346,81 @@
 
         // --- Основная логика ---
         processBtn.onclick = async () => {
-            const apiKey = localStorage.getItem('cyber_api_key');
-            if (!apiKey) {
-                logToTerminal("ОШИБКА: Отсутствует API ключ.");
-                return;
-            }
-            if (!currentFile || !base64ImageRaw) {
-                logToTerminal("ОШИБКА: Визуальные данные не загружены.");
-                return;
-            }
+        const apiKey = localStorage.getItem('cyber_api_key');
+        if (!apiKey) {
+            logToTerminal("ОШИБКА: Отсутствует API ключ.");
+            return;
+        }
+        if (!currentFile || !base64ImageRaw) {
+            logToTerminal("ОШИБКА: Визуальные данные не загружены.");
+            return;
+        }
 
-            const subject = document.querySelector('input[name="subject"]:checked').value;
-            const modelData = document.querySelector('input[name="model"]:checked').value.split(':');
-            const provider = modelData[0];
-            const model = modelData[1];
+        const subject = document.querySelector('input[name="subject"]:checked').value;
+        const modelData = document.querySelector('input[name="model"]:checked').value.split(':');
+        const provider = modelData[0];
+        const model = modelData[1];
 
-            terminal.classList.add('terminal-glow');
-            logToTerminal(`\n[INIT] Запуск протокола анализа: ${subject}`);
+        terminal.classList.add('terminal-glow');
+        logToTerminal(`\n[INIT] Запуск протокола анализа: ${subject}`);
+        
+        let ocrText = "";
+        let ocrConfidence = 0;
+        let ocrSuccess = false;
+
+        // Попытка OCR
+        try {
             logToTerminal(`[OCR] Запуск локального модуля Tesseract.js...`);
+            // Используем base64 напрямую для Tesseract, это стабильнее на мобилках
+            const { data } = await Tesseract.recognize(currentFile, 'rus+eng');
+            ocrText = data.text;
+            ocrConfidence = data.confidence;
+            ocrSuccess = true;
+            logToTerminal(`[OCR] Завершено. Уверенность: ${ocrConfidence.toFixed(2)}%`);
+        } catch (ocrError) {
+            logToTerminal(`[OCR-WARN] Локальный модуль не ответил. Переход к Vision-анализу...`);
+        }
 
-            try {
-                // 1. OCR
-                const { data: { text, confidence } } = await Tesseract.recognize(currentFile, 'rus+eng');
-                logToTerminal(`[OCR] Завершено. Уверенность: ${confidence.toFixed(2)}%`);
+        try {
+            const systemPrompt = `Ты — экспертный преподаватель по предмету "${subject}". Твоя задача — строго и справедливо проверить работу ученика. Найди ошибки, объясни их и поставь объективную оценку. Отвечай на русском языке.`;
 
-                const systemPrompt = `Ты — экспертный преподаватель по предмету "${subject}". Твоя задача — строго и справедливо проверить работу ученика. Найди ошибки, объясни их и поставь объективную оценку. Отвечай на русском языке. Форматируй текст так, чтобы его было удобно читать в терминале.`;
+            let payload = { provider, model, apiKey, systemPrompt };
 
-                let payload = { provider, model, apiKey, systemPrompt };
-
-                // 2. Логика Fallback
-                if (confidence < 50 || text.trim().length < 10) {
-                    logToTerminal(`[WARN] Распознавание текста не удалось. Перенаправление raw-изображения на Vision API (${model})...`);
-                    payload.image = base64ImageRaw;
-                } else {
-                    logToTerminal(`[INFO] Текст успешно извлечен. Отправка текстовых данных (${model})...`);
-                    payload.text = `Работа студента:\n\n${text}`;
-                }
-
-                // 3. Отправка на Worker
-                logToTerminal(`[NET] Маршрутизация пакета через Cloudflare Worker...`);
-                
-                const response = await fetch(WORKER_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Worker Exception: ${response.status} - ${errText}`);
-                }
-
-                const data = await response.json();
-                
-                logToTerminal(`\n=== РЕЗУЛЬТАТЫ АНАЛИЗА ===\n`);
-                logToTerminal(data.result);
-
-            } catch (error) {
-                logToTerminal(`[CRITICAL ERROR] ${error.message}`);
-            } finally {
-                terminal.classList.remove('terminal-glow');
+            // Если OCR не сработал или результат плохой — шлем саму картинку
+            if (!ocrSuccess || ocrConfidence < 50 || ocrText.trim().length < 10) {
+                logToTerminal(`[INFO] Отправка изображения на Vision API (${model})...`);
+                payload.image = base64ImageRaw;
+            } else {
+                logToTerminal(`[INFO] Отправка распознанного текста (${model})...`);
+                payload.text = `Работа студента:\n\n${ocrText}`;
             }
-        };
+
+            logToTerminal(`[NET] Маршрутизация пакета через Cloudflare Worker...`);
+            
+            const response = await fetch(WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Worker Error: ${response.status} - ${errText}`);
+            }
+
+            const data = await response.json();
+            
+            if (data.error) throw new Error(data.error);
+
+            logToTerminal(`\n=== РЕЗУЛЬТАТЫ АНАЛИЗА ===\n`);
+            logToTerminal(data.result);
+
+        } catch (error) {
+            logToTerminal(`[CRITICAL ERROR] ${error.message}`);
+        } finally {
+            terminal.classList.remove('terminal-glow');
+        }
+    };
 
         function logToTerminal(msg) {
             const time = new Date().toLocaleTimeString('ru-RU');
@@ -418,4 +431,4 @@
         initUI();
     </script>
 </body>
-</html>
+    </html>
